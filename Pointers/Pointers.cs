@@ -33,6 +33,7 @@ namespace PvZA11y
         }
 
         public WidgetType widgetType = new WidgetType();
+        public Dictionary<string, string> offsetDic = new();
 
         public string appName;                          //popcapgame1.exe or PlantsVsZombies.exe
 

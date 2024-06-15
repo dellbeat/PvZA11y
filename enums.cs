@@ -377,6 +377,7 @@ namespace PvZA11y
 
     enum GameScene
     {
+        UnInit = -1,
         Loading,
         MainMenu,
         SeedPicker,

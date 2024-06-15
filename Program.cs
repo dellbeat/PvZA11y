@@ -12,6 +12,9 @@ using System.Windows.Forms;
 using System.Collections.Immutable;
 using PvZA11y.Widgets;
 using NAudio.Mixer;
+using PvZA11y.Games;
+using PvZA11y.Models;
+using PvZA11y.Utility;
 
 /*
 [PVZ-A11y Beta 1.17.2]
@@ -171,6 +174,7 @@ namespace PvZA11y
 
 
         static MemoryIO memIO;// = new MemoryIO("PLACEHOLDER", 0, mem);
+        private static Game game;
 
         public static long CurrentEpoch()
         {
@@ -354,6 +358,20 @@ namespace PvZA11y
                 ClickTask(x, y, rightClick, delayTime, moveMouse);
         }
 
+
+        public static void Click(nint gameWHnd, DrawSizeInfo info, float x, float y, bool rightClick = false, bool async = true, int delayTime = 50,
+            bool moveMouse = false)
+        {
+            if (async)
+            {
+                Task.Run(() => ExternUtility.ClickTask(gameWHnd, info, x, y, rightClick, delayTime, moveMouse));
+            }
+            else
+            {
+                ExternUtility.ClickTask(gameWHnd, info, x, y, rightClick, delayTime, moveMouse);
+            }
+        }
+        
         public static void Click(Vector2 clickPos, bool rightClick = false)
         {
             Click(clickPos.X, clickPos.Y, rightClick);
@@ -418,7 +436,7 @@ namespace PvZA11y
         //static uint addr_tooltip_plantID = 0;
 
 
-        static Process HookProcess()
+        static Process HookProcess(bool isTest = false)
         {
 
             //bool didOpen = mem.OpenProcess("PlantsVsZombies.exe");
@@ -570,7 +588,14 @@ namespace PvZA11y
                 Environment.Exit(1);
             }
 
-            memIO = new MemoryIO(appName, versionNum, mem);
+            if (isTest)
+            {
+                game = new Game(appName, versionNum, mem, gameProc.MainWindowHandle);
+            }
+            else
+            {
+                memIO = new MemoryIO(appName, versionNum, mem);
+            }
 
 
             //memIO = new MemoryIO(appName, 1201073, mem);
@@ -1807,13 +1832,60 @@ namespace PvZA11y
             PlayTone(lVolume, rVolume, frequency, frequency, 100, SignalGeneratorType.Sin);
         }
 
+        static void TestMain(string[] args)
+        {
+            nint gameWinHnd = IntPtr.Zero;
+            
+            Config.LoadConfig();
+            Text.FindLanguages();
+            input = new Input();    //Start input scanning thread
+            
+            Process gameProc = HookProcess(true);
+            GameScene prevScene = game.GetGameScene();
+            
+            if (args is { Length: > 0 } && args[0] == "Restart")
+            {
+                Console.WriteLine("The mod encountered a fatal error, and had to restart");
+                PlayTone(0.5f, 0.5f, 250, 250, 100, SignalGeneratorType.Square, 0);
+                PlayTone(1, 1, 300, 300, 100, SignalGeneratorType.Square, 200);
+                PlayTone(0.5f, 0.5f, 250, 250, 100, SignalGeneratorType.Square, 400);
+                Say("PVZ A11y was restarted due to a fatal error. Press any bound keyboard or controller input to continue.", true);
+                while (input.GetCurrentIntent() == InputIntent.None) ;
+            }
+            
+            Console.WriteLine("prevScene: " + prevScene);
+            
+            //Why calculate size and startX before judge loading screen
+
+            if (gameProc.HasExited)
+            {
+                Environment.Exit(0);
+            }
+        
+            gameWinHnd = gameProc.MainWindowHandle;
+            var drawSizeInfo = game.GetWindowSize();
+
+            //TODO:Judge widget
+            while (prevScene == GameScene.Loading)
+            {
+                bool loadingComplete = game.CheckLoadingComplete();
+                
+                if(loadingComplete){
+                    Click(gameWinHnd,drawSizeInfo,0.5f,0.5f);
+                }
+                
+                prevScene = game.GetGameScene();
+                Task.Delay(100).Wait();
+            }
+        }
+        
         static void SafeMain(string[] args)
         {
             Config.LoadConfig();
             Text.FindLanguages();
             input = new Input();    //Start input scanning thread
 
-            Process gameProc = HookProcess();           
+            Process gameProc = HookProcess();
 
             GameScene prevScene = (GameScene)memIO.GetGameScene();
 
